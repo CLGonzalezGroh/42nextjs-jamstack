@@ -11,6 +11,7 @@ export const getStaticProps: GetStaticProps<HomeProps> = async () => {
   const plants = await getPlantList({ limit: 10 })
   return {
     props: { plants },
+    revalidate: 5 * 60, //REFRESH EACH 5 MIN
   }
 }
 

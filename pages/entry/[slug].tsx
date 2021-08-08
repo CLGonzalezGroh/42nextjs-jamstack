@@ -1,46 +1,93 @@
-import { getPlant, QueryStatus } from '@api'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
+import { GetStaticPaths, GetStaticProps, InferGetStaticPropsType } from 'next'
+import Link from 'next/link'
+
+import { getPlant, getPlantList, getCategoryList } from '@api'
+
 import { Layout } from '@components/Layout'
 import { Typography } from '@ui/Typography'
 import { Grid } from '@ui/Grid'
+
 import { RichText } from '@components/RichText'
 import { AuthorCard } from '@components/AuthorCard'
+import { PlantEntryInline } from '@components/PlantCollection'
+import { useRouter } from 'next/dist/client/router'
 
-export default function PlantEntryPage() {
-  const [status, setStatus] = useState<QueryStatus>('idle')
-  const [plant, setPlant] = useState<Plant | null>(null)
-  const router = useRouter()
-  const { slug } = router.query
+type PlantEntryProps = {
+  plant: Plant | null
+  otherEntries: Plant[] | null
+  categories: Category[] | null
+}
 
-  useEffect(() => {
-    if (typeof slug !== 'string') {
-      return
+export const getStaticProps: GetStaticProps<PlantEntryProps> = async ({
+  params,
+}) => {
+  const slug = params?.slug
+  if (typeof slug !== 'string') {
+    return {
+      notFound: true,
     }
-    setStatus('loading')
-    getPlant(slug)
-      .then((receivedData) => {
-        setPlant(receivedData)
-        setStatus('success')
-      })
-      .catch(() => setStatus('error'))
-  }, [slug])
+  }
+  try {
+    const plant = await getPlant(slug)
+    const otherEntries = await getPlantList({ limit: 5 })
+    const categories = await getCategoryList({ limit: 10 })
 
-  if (status === 'loading' || status === 'idle') {
+    return {
+      props: {
+        plant,
+        otherEntries,
+        categories,
+      },
+      revalidate: 5 * 60, //REFRESH EACH 5 MIN
+    }
+  } catch (error) {
+    return {
+      notFound: true,
+    }
+  }
+}
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  type PathType = {
+    params: {
+      slug: string
+    }
+  }
+  const entries = await getPlantList({ limit: 10 })
+  const paths: PathType[] = entries.map((entry) => ({
+    params: {
+      slug: entry.slug,
+    },
+  }))
+  return {
+    paths,
+    //fallback: false RETURN 404 IF THE SLUG DO NOT EXIST
+    //fallback: 'blocking' BLOCK THE PAGE UNTIL LOAD IT
+    //fallback: true YO CAN MANAGE THE STATE TO SHOW A LOADING
+    fallback: true,
+  }
+}
+
+export default function PlantEntryPage({
+  plant,
+  otherEntries,
+  categories,
+}: InferGetStaticPropsType<typeof getStaticProps>) {
+  
+  const router = useRouter()
+  if (router.isFallback) {
+    <Layout>
+    <main>Loading...</main>
+  </Layout>
+  }
+  ]
+  if (plant == null) {
     return (
       <Layout>
-        <main>Loading...</main>
+        <main>404, Not found</main>
       </Layout>
     )
   }
-  if (plant == null || status === 'error') {
-    return (
-      <Layout>
-        <main>404, No se encontro.</main>
-      </Layout>
-    )
-  }
-
   return (
     <Layout>
       <Grid container spacing={4}>
@@ -60,11 +107,26 @@ export default function PlantEntryPage() {
             <Typography variant="h5" component="h3" className="mb-4">
               Recent post
             </Typography>
+            {otherEntries?.map((entry) => (
+              <article className="mb-4" key={entry.id}>
+                <PlantEntryInline {...entry} />
+              </article>
+            ))}
           </section>
           <section>
             <Typography variant="h5" component="h3" className="mb-4">
               Categories
             </Typography>
+
+            <ul className="list">
+              {categories?.map((category) => (
+                <Link passHref href={`/category/${category.slug}`}>
+                  <Typography component="a" variant="h6">
+                    {category.title}
+                  </Typography>
+                </Link>
+              ))}
+            </ul>
           </section>
         </Grid>
       </Grid>
